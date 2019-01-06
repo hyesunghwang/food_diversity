@@ -9,10 +9,10 @@ library(tidyr)
 library(plyr)
 library(dplyr)
 library(ggplot2)
-
+library(reshape)
 
 # set working directory
-setwd("/Users/hyesunghwang/Dropbox/Uchicago Postdoc/Studies/Food & Diversity Study/Food_Diversity")
+setwd("/Users/hyesunghwang/Dropbox/food_diversity")
 
 # Import dataset
 adult_pilot<-read.csv("Adult_pilot1.csv", header=TRUE)
@@ -81,3 +81,32 @@ ggplot(data = adult_pilot_summary2, aes(x = food_type, y = mean, fill = label_ty
   geom_bar(stat="identity", position=position_dodge()) +
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2,
                 position=position_dodge(.9))
+
+# linear model to test main effect and interactions
+## select only relevant columns
+adult_pilot_short<-select(adult_pilot, foreign_food_label, foreign_food_no_label,
+                          western_food_label, western_food_no_label,
+                          nonfood_label, nonfood_no_label)
+rownames(adult_pilot_short)<-c(1:10)
+adult_pilot_short$p<-c(1:10)
+
+## transpose
+adult_pilot_short_t<-melt(adult_pilot_short, id = "p")
+
+# create columns 
+adult_pilot_short_t$food_type<-as.factor(c(rep("foreign_food", length(1:20)), 
+                                  rep("western_food", length(1:20)),
+                                 rep("non_food", length(1:20))))
+adult_pilot_short_t$label_type<-as.factor(c(rep("label", length(1:10)), 
+                                  rep("no_label", length(1:10)),
+                                  rep("label", length(1:10)),
+                                  rep("no_label", length(1:10)),
+                                  rep("label", length(1:10)),
+                                  rep("no_label", length(1:10))))
+
+## linear model
+model1<-lm(value~food_type+label_type, data = adult_pilot_short_t)
+summary(model1)
+
+model2<-lm(value~food_type*label_type, data = adult_pilot_short_t)
+summary(model2)
