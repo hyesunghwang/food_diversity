@@ -11,12 +11,13 @@ library(dplyr)
 library(ggplot2)
 library(reshape)
 
+
 # set working directory
 setwd("/Users/hyesunghwang/Dropbox/food_diversity")
 
 # Import dataset
 adult_pilot<-read.csv("Adult_pilot1.csv", header=TRUE)
-
+data1<-read.csv("adult_pilot_summary_updated.csv", header=TRUE)
 
 
 # add summary columns 
@@ -77,13 +78,14 @@ adult_pilot_summary2$se<-c(se(adult_pilot$foreign_food_label),se(adult_pilot$for
                            se(adult_pilot$nonfood_label),se(adult_pilot$nonfood_no_label))
 
 ## graph
-tiff("Adult_pilot1.tiff", res=800, compression = "lzw", height=5, width=5, units="in")
-ggplot(data = adult_pilot_summary2, aes(x = food_type, y = mean, fill = label_type)) +
-  ylim(0,5)+
+tiff("Adult_pilot1_mainresults.tiff", res=800, compression = "lzw", height=5, width=5, units="in")
+a<-ggplot(data = adult_pilot_summary2, aes(x = food_type, y = mean, fill = label_type)) +
   geom_bar(stat="identity", position=position_dodge()) +
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2,
-                               position=position_dodge(.9))+
-  ggtitle("Adult MTurk Pilot ver 1")
+                position=position_dodge(.9))+
+  labs(y = "Acceptability ratings: How okay is it to eat this")+
+  ggtitle("Adult MTurk Pilot ver 1 - main results")
+a
 dev.off()
 
 # linear model to test main effect and interactions
@@ -114,3 +116,4 @@ summary(model1)
 
 model2<-lm(value~food_type*label_type, data = adult_pilot_short_t)
 summary(model2)
+
