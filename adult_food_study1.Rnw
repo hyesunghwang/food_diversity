@@ -1,0 +1,604 @@
+\documentclass{article}
+\usepackage{fullpage}
+\usepackage[scale=.95]{geometry}
+\begin{document}
+
+\title{Adult Food Study}
+\author{Study 1}
+\maketitle
+
+\textbf{Workspace}
+<<warning=F, message=F>>=
+# Clear the workspace and console
+rm(list = ls(all = TRUE)) 
+cat("\014")
+@
+
+<<warning=F, message=F>>=
+# load library
+library(readxl)
+library(tidyverse)
+library(ggpubr)
+library(MASS)
+library(gridExtra)
+library(jtools)
+library(sjPlot)
+library(lme4)
+library(lmerTest)
+@
+
+Load Data 
+<<tidy=TRUE>>=
+setwd("/Users/hyesunghwang/Dropbox/food_diversity/adult_food_study")
+
+# call datase that has the census data
+data<-read_excel("adult_food_cleaned.xlsx")
+
+# add a category for race to reduce it to White or nonwhite
+data$Race_reduced<-data$Race
+
+data$Race_reduced<-recode(data$Race_reduced, "'6' ='White'; else='Nonwhite'")
+
+# make data into long form
+data_long<-gather(data, food_type, rating, foreignfood:nonfood, factor_key=TRUE)
+
+# split data into different food type
+data_foreignfood<-subset(data_long, food_type=="foreignfood")
+data_unconventional<-subset(data_long, food_type=="unconventional")
+data_westernfood<-subset(data_long, food_type=="westernfood")
+data_conventional<-subset(data_long, food_type=="conventional")
+data_nonfood<-subset(data_long, food_type=="nonfood")
+
+@
+
+
+\section{Main model}
+<<tidy=TRUE>>=
+# main effect food type
+model0<-lmer(rating~(1|P), data = data_long)
+model1<-lmer(rating~ food_type+(1|P), data = data_long)
+anova(model0, model1)
+#summary(model1)
+@
+Significant main effect of food type.
+
+<<tidy=TRUE>>=
+# main effect label
+model2<-lmer(rating~ food_type+Condition+(1|P), data = data_long)
+anova(model2, model1)
+#summary(model2)
+@
+Marginal effect of condition. 
+
+<<tidy=TRUE>>=
+# two way interaction - only food type interaction
+model3<-lmer(rating~ food_type*Condition+(1|P), data = data_long)
+anova(model2, model3)
+#summary(model3)
+@
+No effect of interaction food type x condition
+
+\section{Covariate Analyses}
+\subsection{normality check}
+<<tidy=TRUE>>=
+# normality check
+hist(data$foreignfood)
+hist(data$unconventional)
+shapiro.test(data$foreignfood)
+shapiro.test(data$unconventional)
+@
+ratings of foreign food and unconventional food are not normally distributed
+
+<<tidy=TRUE>>=
+# normality check
+hist(data$food_neophobia)
+shapiro.test(data$food_neophobia)
+@
+food neophobia normally distributed
+
+<<tidy=TRUE>>=
+# normality check
+hist(data$political)
+shapiro.test(data$political)
+@
+political attitude not normally distributed\newline 
+
+Because not normally distributed, use nonparametric kendall correlations
+
+\subsection{Food neophobia}
+<<tidy=TRUE>>=
+ggscatter(data, x = "foreignfood", y = "food_neophobia", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+
+cor.test(x = data$foreignfood, y = data$food_neophobia, method=("kendall"))
+@
+
+<<tidy=TRUE>>=
+# unconventional food
+ggscatter(data, x = "unconventional", y = "food_neophobia", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+
+cor.test(x = data$unconventional, y = data$food_neophobia, method=("kendall"))
+@
+food neophobia sig correlated with foreign food and unconventional food
+
+\subsection{Political}
+
+<<tidy=TRUE>>=
+# foreign food
+ggscatter(data, x = "foreignfood", y = "political", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+
+cor.test(x = data$foreignfood, y = data$political, method=("kendall"))
+
+@
+
+<<tidy=TRUE>>=
+# unconventional food
+ggscatter(data, x = "unconventional", y = "political", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+
+cor.test(x = data$unconventional, y = data$political, method=("kendall"))
+@
+food neophobia sig correlated with foreign food and unconventional food
+
+\subsection{dietary}
+<<tidy=TRUE>>=
+# foreign food
+library(ltm)
+biserial.cor(data$foreignfood, data$dietary, use = ("all.obs"), level = 1)
+cor.test(x = data$foreignfood, y = data$dietary, method=("pearson"))
+@
+no effect of dietary on foreign food
+
+<<tidy=TRUE>>=
+# unconventional food
+biserial.cor(data$unconventional, data$dietary, use = ("all.obs"), level = 1)
+cor.test(x = data$unconventional, y = data$dietary, method=("pearson"))
+@
+no effect of dietary on unconventional food
+
+\section{Diversity effects}
+\subsection{Linguistic and racial diversity from zip code (Proportion of population) and label effect}
+<<tidy=TRUE>>=
+# distribution of nonenglish population
+hist(data$lang_outgroup)
+# distribution of racial outgroup population
+hist(data$race_outgroup_zipcode)
+@
+
+\subsubsection{Create a composite zip code score}
+<<tidy=TRUE>>=
+# sum linguistic and racial diversity
+data$outgroup_zipcode<-data$lang_outgroup+data$race_outgroup_zipcode
+hist(data$outgroup_zipcode)
+@
+
+\subsubsection{Foreign food}
+<<tidy=TRUE>>=
+data_foreignfood$outgroup_zipcode<-data_foreignfood$lang_outgroup+data_foreignfood$race_outgroup_zipcode
+# main effect model
+model_zipcodexlabel<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_foreignfood)
+
+summary(model_zipcodexlabel)
+
+# interaction model
+model_zipcodexlabel2<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             outgroup_zipcode:Condition, data = data_foreignfood)
+
+summary(model_zipcodexlabel2)
+
+anova(model_zipcodexlabel, model_zipcodexlabel2)
+@
+Marginal zipcod outgroup population x condition interaction.
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodexlabel2, pred = "outgroup_zipcode", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+<<tidy=TRUE>>=
+# explore sig effect of population density 
+model_zipcodexlabel2_density<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             outgroup_zipcode:Condition+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodexlabel2_density)
+
+interact_plot(model_zipcodexlabel2_density, pred = "census_density", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+The effect of census density is more for label than no label condition
+
+\subsubsection{Unconventional food}
+<<tidy=TRUE>>=
+data_unconventional$outgroup_zipcode<-data_unconventional$lang_outgroup+data_unconventional$race_outgroup_zipcode
+# main effect model
+model_zipcodexlabel_unconventional<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_unconventional)
+
+summary(model_zipcodexlabel_unconventional)
+
+# interaction model
+model_zipcodexlabel2_unconventional<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             outgroup_zipcode:Condition, data = data_unconventional)
+
+summary(model_zipcodexlabel2_unconventional)
+
+anova(model_zipcodexlabel_unconventional, model_zipcodexlabel2_unconventional)
+@
+No zip code outgroup population x condition interaction. No main effects.
+<<tidy=TRUE>>=
+interact_plot(model_zipcodexlabel2_unconventional, pred = "outgroup_zipcode", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+<<tidy=TRUE>>=
+# check census density
+model_zipcodexlabel2_unconventional_density<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             outgroup_zipcode:Condition+census_density:Condition, data = data_unconventional)
+
+summary(model_zipcodexlabel2_unconventional_density)
+
+interact_plot(model_zipcodexlabel2_unconventional_density, pred = "census_density", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+No effect of census density on unconventional foods
+
+\subsection{Zip code diversity and neighborhood trust}
+\subsubsection{Foreign food}
+<<tidy=TRUE>>=
+model_zipcodextrust<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+                       neighbor_trust+outgroup_zipcode:Condition+Condition:neighbor_trust+outgroup_zipcode:neighbor_trust+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodextrust)
+
+@
+No zip code diversity x trust interaction. 
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodextrust, pred = "outgroup_zipcode", modx = "neighbor_trust", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+<<tidy=TRUE>>=
+# explore if there is a three way interaction
+model_zipcodextrust_threeway<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+             outgroup_zipcode*neighbor_trust*Condition+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodextrust_threeway)
+
+anova(model_zipcodextrust, model_zipcodextrust_threeway)
+
+interact_plot(model_zipcodextrust_threeway, pred = "outgroup_zipcode", modx = "neighbor_trust", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+\subsubsection{follow up on sig three way interaction outgroup zip code population x neighborhood trust x label condition}
+<<tidy=TRUE>>=
+# label condition
+data_foreignfood_label<-subset(data_foreignfood, data_foreignfood$Condition == "Label")
+
+model_zipcodextrust_threeway_label<-lm(rating~ outgroup_zipcode+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+             outgroup_zipcode*neighbor_trust, data = data_foreignfood_label)
+
+summary(model_zipcodextrust_threeway_label)
+@
+no sig outgroup population in zip code x neighborhood trust
+<<tidy=TRUE>>=
+# no label condition
+data_foreignfood_nolabel<-subset(data_foreignfood, data_foreignfood$Condition == "No_Label")
+
+model_zipcodextrust_threeway_nolabel<-lm(rating~ outgroup_zipcode+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+             outgroup_zipcode*neighbor_trust+census_density:Condition, data = data_foreignfood_nolabel)
+
+summary(model_zipcodextrust_threeway_nolabel)
+
+@
+sig outgroup population in zip code x neighborhood trust
+
+
+\subsubsection{Unconventional food}
+<<tidy=TRUE>>=
+model_zipcodextrust_unconventional<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+              outgroup_zipcode:Condition+Condition:neighbor_trust+outgroup_zipcode:neighbor_trust, data = data_unconventional)
+
+summary(model_zipcodextrust_unconventional)
+
+@
+No outgroup diversity x trust interaction. 
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodextrust_unconventional, pred = "outgroup_zipcode", modx = "neighbor_trust", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+<<tidy=TRUE>>=
+# explore if there is a three way interaction
+model_zipcodextrust_threeway_unconventional<-lm(rating~ outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+outgroup_zipcode*neighbor_trust*Condition, data = data_unconventional)
+
+summary(model_zipcodextrust_threeway_unconventional)
+
+anova(model_zipcodextrust_unconventional, model_zipcodextrust_threeway_unconventional)
+
+interact_plot(model_zipcodextrust_threeway_unconventional, pred = "outgroup_zipcode", modx = "neighbor_trust", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+no sig three way interaction but similiar looking pattern as foreign food
+
+
+\section{Self report: outgroup contact quantity and quality}
+<<tidy=TRUE>>=
+# distribution of contact quantity
+hist(data$race_contact_quant_1)
+hist(data$lang_contact_quant_1)
+# distribution of contact quality 
+hist(data$race_contact_qual_1)
+hist(data$lang_contact_qual_1)
+@
+
+\subsubsection{Create a composite self report score}
+<<tidy=TRUE>>=
+# sum quantity
+data$contact_quantity<-data$race_contact_quant_1+data$lang_contact_quant_1
+hist(data$contact_quantity)
+
+# sum quality
+data$contact_quality<-data$race_contact_qual_1+data$lang_contact_qual_1
+hist(data$contact_quality)
+@
+
+\subsection{Correlation between zipcode based vs self report based}
+<<tidy=TRUE>>=
+# correlation between zip code diversity and contact quantity 
+ggscatter(data, x = "outgroup_zipcode", y = "contact_quantity", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+
+ggscatter(data, x = "entropy_zipcode", y = "contact_quantity", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+@
+zip code outgroup population is correlated with self report outgroup contact quantity at r = .25
+
+<<tidy=TRUE>>=
+# neighbor trust self report and contact quality self report
+ggscatter(data, x = "neighbor_trust", y = "contact_quality", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "kendall")
+@
+neighbor trust and contact quality are not correlated
+
+\subsubsection{Foreign food}
+<<tidy=TRUE>>=
+data_foreignfood$contact_quantity<-data_foreignfood$race_contact_quant_1+data_foreignfood$lang_contact_quant_1
+data_foreignfood$contact_quality<-data_foreignfood$race_contact_qual_1+data_foreignfood$lang_contact_qual_1
+
+# main effect model
+model_selfreportxlabel<-lm(rating~ contact_quantity+contact_quality+neighbor_trust+outgroup_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_foreignfood)
+
+summary(model_selfreportxlabel)
+
+# interaction model
+model_selfreportxlabel2<-lm(rating~ contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+contact_quantity:Condition+contact_quality:Condition, data = data_foreignfood)
+
+summary(model_selfreportxlabel2)
+
+anova(model_selfreportxlabel, model_selfreportxlabel2)
+@
+quantity x condition interaction.
+
+<<tidy=TRUE>>=
+interact_plot(model_selfreportxlabel2, pred = "contact_quantity", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+<<tidy=TRUE>>=
+# three way interaction model
+model_selfreportxlabel3<-lm(rating~ contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+
+             contact_quantity*contact_quality*Condition, data = data_foreignfood)
+
+summary(model_selfreportxlabel3)
+
+anova(model_selfreportxlabel3, model_selfreportxlabel2)
+
+interact_plot(model_selfreportxlabel3, pred = "contact_quantity", modx = "contact_quality", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+no sig three way interaction 
+
+<<tidy=TRUE>>=
+# interaction model plus zip code
+model_selfreportxlabel3_plus<-lm(rating~ outgroup_zipcode+contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+contact_quantity*contact_quality*Condition+outgroup_zipcode:Condition, data = data_foreignfood)
+
+summary(model_selfreportxlabel3_plus)
+
+anova(model_selfreportxlabel3, model_selfreportxlabel3_plus)
+
+
+# interaction model plus zip code entropy
+model_selfreportxlabel3_plus_entropy<-lm(rating~ entropy_zipcode+contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+contact_quantity*contact_quality*Condition+entropy_zipcode:Condition, data = data_foreignfood)
+
+summary(model_selfreportxlabel3_plus_entropy)
+
+anova(model_selfreportxlabel3, model_selfreportxlabel3_plus_entropy)
+@
+
+
+\subsubsection{Unconventional food}
+<<tidy=TRUE>>=
+data_unconventional$contact_quantity<-data_unconventional$race_contact_quant_1+data_unconventional$lang_contact_quant_1
+data_unconventional$contact_quality<-data_unconventional$race_contact_qual_1+data_unconventional$lang_contact_qual_1
+
+# main effect model
+model_selfreportxlabel_unconventional<-lm(rating~ contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_unconventional)
+
+summary(model_selfreportxlabel_unconventional)
+
+# interaction model
+model_selfreportxlabel2_unconventional<-lm(rating~ contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             contact_quantity:Condition+contact_quality:Condition+census_density:Condition, data = data_unconventional)
+
+summary(model_selfreportxlabel2_unconventional)
+
+anova(model_selfreportxlabel_unconventional, model_selfreportxlabel2_unconventional)
+@
+contact quantity x condition interaction. No main effects.
+<<tidy=TRUE>>=
+interact_plot(model_selfreportxlabel2_unconventional, pred = "contact_quantity", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+<<tidy=TRUE>>=
+# three way interaction model
+model_selfreportxlabel3_unconventional<-lm(rating~ contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+
+             contact_quantity*contact_quality*Condition, data = data_unconventional)
+
+summary(model_selfreportxlabel3_unconventional)
+
+anova(model_selfreportxlabel3_unconventional, model_selfreportxlabel2_unconventional)
+
+interact_plot(model_selfreportxlabel3_unconventional, pred = "contact_quantity", modx = "contact_quality", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+no sig three way interaction 
+
+<<tidy=TRUE>>=
+# interaction model plus zip code
+model_selfreportxlabel3_plus_unconventional<-lm(rating~ outgroup_zipcode+contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+contact_quantity*contact_quality*Condition+outgroup_zipcode:Condition, data = data_unconventional)
+
+summary(model_selfreportxlabel3_plus_unconventional)
+
+anova(model_selfreportxlabel3_unconventional, model_selfreportxlabel3_plus_unconventional)
+
+# interaction model plus zip code entropy
+model_selfreportxlabel3_plus_unconventional_entropy<-lm(rating~ entropy_zipcode+contact_quantity+contact_quality+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+census_density:Condition+contact_quantity*contact_quality*Condition+entropy_zipcode:Condition, data = data_unconventional)
+
+summary(model_selfreportxlabel3_plus_unconventional_entropy)
+
+anova(model_selfreportxlabel3_unconventional, model_selfreportxlabel3_plus_unconventional_entropy)
+@
+
+\subsection{Entropy zip code and label effect}
+<<tidy=TRUE>>=
+# distribution of lang entropy
+hist(data$lang_entropy)
+# distribution of racial entropy
+hist(data$racial_entropy)
+@
+
+\subsubsection{Create a composite zip code score}
+<<tidy=TRUE>>=
+# sum linguistic and racial diversity
+data$entropy_zipcode<-data$lang_entropy+data$racial_entropy
+hist(data$entropy_zipcode)
+@
+
+\subsubsection{Foreign food}
+<<tidy=TRUE>>=
+data_foreignfood$entropy_zipcode<-data_foreignfood$lang_entropy+data_foreignfood$racial_entropy
+# main effect model
+model_zipcodexlabel_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_foreignfood)
+
+summary(model_zipcodexlabel_entropy)
+
+# interaction model
+model_zipcodexlabel2_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             entropy_zipcode:Condition, data = data_foreignfood)
+
+summary(model_zipcodexlabel2_entropy)
+
+anova(model_zipcodexlabel_entropy, model_zipcodexlabel2_entropy)
+@
+Sig zipcode outgroup entropy x condition interaction.
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodexlabel2_entropy, pred = "entropy_zipcode", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+<<tidy=TRUE>>=
+# explore sig effect of population density 
+model_zipcodexlabel2_density_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             entropy_zipcode:Condition+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodexlabel2_density_entropy)
+
+interact_plot(model_zipcodexlabel2_density_entropy, pred = "census_density", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+The effect of census density is more for label than no label condition
+
+\subsubsection{Unconventional food}
+<<tidy=TRUE>>=
+data_unconventional$entropy_zipcode<-data_unconventional$lang_entropy+data_unconventional$racial_entropy
+# main effect model
+model_zipcodexlabel_unconventional_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher, data = data_unconventional)
+
+summary(model_zipcodexlabel_unconventional_entropy)
+
+# interaction model
+model_zipcodexlabel2_unconventional_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             entropy_zipcode:Condition+census_density:Condition, data = data_unconventional)
+
+summary(model_zipcodexlabel2_unconventional_entropy)
+
+anova(model_zipcodexlabel_unconventional, model_zipcodexlabel2_unconventional)
+@
+No zip code entropy x condition interaction. No main effects.
+<<tidy=TRUE>>=
+interact_plot(model_zipcodexlabel2_unconventional_entropy, pred = "entropy_zipcode", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+<<tidy=TRUE>>=
+# check census density
+model_zipcodexlabel2_unconventional_density_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+             entropy_zipcode:Condition+census_density:Condition, data = data_unconventional)
+
+summary(model_zipcodexlabel2_unconventional_density_entropy)
+
+interact_plot(model_zipcodexlabel2_unconventional_density_entropy, pred = "census_density", modx = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+No effect of census density on unconventional foods
+
+\subsection{Zip code entropy and neighborhood trust}
+\subsubsection{Foreign food}
+<<tidy=TRUE>>=
+model_zipcodextrust_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+
+                       neighbor_trust+entropy_zipcode:Condition+Condition:neighbor_trust+entropy_zipcode:neighbor_trust+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodextrust_entropy)
+
+@
+No zip code diversity x trust interaction. 
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodextrust_entropy, pred = "entropy_zipcode", modx = "neighbor_trust", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+<<tidy=TRUE>>=
+# explore if there is a three way interaction
+model_zipcodextrust_threeway_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+            entropy_zipcode*neighbor_trust*Condition+census_density:Condition, data = data_foreignfood)
+
+summary(model_zipcodextrust_threeway_entropy)
+
+anova(model_zipcodextrust_entropy, model_zipcodextrust_threeway_entropy)
+
+interact_plot(model_zipcodextrust_threeway_entropy, pred = "entropy_zipcode", modx = "neighbor_trust", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "foreign food")
+@
+
+\subsubsection{Unconventional food}
+<<tidy=TRUE>>=
+model_zipcodextrust_unconventional_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+
+             entropy_zipcode:Condition+Condition:neighbor_trust+entropy_zipcode:neighbor_trust+census_density:Condition, data = data_unconventional)
+
+summary(model_zipcodextrust_unconventional_entropy)
+@
+No outgroup diversity x trust interaction. 
+
+<<tidy=TRUE>>=
+interact_plot(model_zipcodextrust_unconventional_entropy, pred = "entropy_zipcode", modx = "neighbor_trust", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+<<tidy=TRUE>>=
+# explore if there is a three way interaction
+model_zipcodextrust_threeway_unconventional_entropy<-lm(rating~ entropy_zipcode+Condition+food_neophobia+political+census_density+median_income+Ed_highschool_higher+neighbor_trust+entropy_zipcode*neighbor_trust*Condition+census_density:Condition, data = data_unconventional)
+
+summary(model_zipcodextrust_threeway_unconventional_entropy)
+
+anova(model_zipcodextrust_unconventional_entropy, model_zipcodextrust_threeway_unconventional_entropy)
+
+interact_plot(model_zipcodextrust_threeway_unconventional_entropy, pred = "entropy_zipcode", modx = "neighbor_trust", mod2 = "Condition", interval = TRUE, int.width = 0.8, main.title = "unconventional food")
+@
+
+
+\end{document}
